@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 
 namespace YtAudioDownloader;
 
@@ -8,6 +9,10 @@ internal static class HeadlessClip
 {
     public static int Run(string[] args)
     {
+        // The GUI exe has no console of its own, so Console.OutputEncoding can't be set; redirecting
+        // stdout still needs UTF-8 so Cyrillic titles/paths in "OK <path>" come out readable.
+        Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
+
         if (!TryParseArguments(args, out ClipRequest? request, out string? error))
         {
             Console.WriteLine("ERROR " + error);

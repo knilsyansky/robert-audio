@@ -42,6 +42,7 @@ internal sealed record UiText
     public required string ErrorInvalidUrl { get; init; }
     public required string ErrorNetwork { get; init; }
     public required string ErrorToolMissing { get; init; }
+    public required string ErrorBadFolder { get; init; }
     public required string ErrorOutOfRange { get; init; }
     public required string ErrorConvert { get; init; }
     public required string ErrorUnknown { get; init; }
@@ -88,6 +89,7 @@ internal static class Strings
         ErrorInvalidUrl = "This doesn't look like a YouTube video link.",
         ErrorNetwork = "Can't reach YouTube. Check your internet connection.",
         ErrorToolMissing = "Some program files are missing ({0}). Download the app again and unpack the whole archive.",
+        ErrorBadFolder = "This folder can't be used. Choose another one with Browse...",
         ErrorOutOfRange = "The start time is after the end of the video ({0}).",
         ErrorConvert = "Couldn't cut or convert the audio.",
         ErrorUnknown = "Something went wrong.",
@@ -99,7 +101,7 @@ internal static class Strings
         UrlLabel = "Ссылка на YouTube",
         StartLabel = "Начало",
         EndLabel = "Конец",
-        TimeHint = "например 1:35 или 95 (секунды)",
+        TimeHint = "например, 1:35 или 95 (секунды)",
         FadeCheckBox = "Плавное появление и затухание, сек:",
         NormalizeCheckBox = "Выровнять громкость",
         OutputFolderLabel = "Папка для сохранения",
@@ -132,6 +134,7 @@ internal static class Strings
         ErrorInvalidUrl = "Это не похоже на ссылку на видео YouTube.",
         ErrorNetwork = "Нет связи с YouTube. Проверьте подключение к интернету.",
         ErrorToolMissing = "Не хватает файлов программы ({0}). Скачайте программу заново и распакуйте архив целиком.",
+        ErrorBadFolder = "Эту папку нельзя использовать. Выберите другую кнопкой «Обзор...».",
         ErrorOutOfRange = "Время начала больше длины видео ({0}).",
         ErrorConvert = "Не удалось обрезать или сконвертировать аудио.",
         ErrorUnknown = "Что-то пошло не так.",

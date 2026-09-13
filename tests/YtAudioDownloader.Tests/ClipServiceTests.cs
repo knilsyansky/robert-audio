@@ -122,6 +122,43 @@ public sealed class ClipServiceTests : IDisposable
         Assert.False(Directory.Exists(_downloader.LastTempDir));
     }
 
+    [Fact]
+    public async Task Creates_the_output_folder_before_downloading()
+    {
+        bool? existedDuringDownload = null;
+        _downloader.OnDownload = () => existedDuringDownload = Directory.Exists(_outputFolder);
+        _downloader.Results.Enqueue(Audio());
+
+        await CreateClip(start: 95, end: 125);
+
+        Assert.True(existedDuringDownload);
+    }
+
+    [Fact]
+    public async Task Updates_and_retries_once_after_an_unknown_failure()
+    {
+        _downloader.Results.Enqueue(Fail(YtDlpFailure.Unknown));
+        _downloader.Results.Enqueue(Audio());
+
+        ClipResult result = await CreateClip(start: 95, end: 125);
+
+        Assert.True(File.Exists(result.OutputPath));
+        Assert.Equal(2, _downloader.DownloadCalls);
+        Assert.Equal(1, _downloader.UpdateCalls);
+    }
+
+    [Fact]
+    public async Task Does_not_retry_a_network_failure()
+    {
+        _downloader.Results.Enqueue(Fail(YtDlpFailure.Network));
+
+        YtDlpException error = await Assert.ThrowsAsync<YtDlpException>(() => CreateClip(start: 95, end: 125));
+
+        Assert.Equal(YtDlpFailure.Network, error.Failure);
+        Assert.Equal(1, _downloader.DownloadCalls);
+        Assert.Equal(0, _downloader.UpdateCalls);
+    }
+
     private Task<ClipResult> CreateClip(double start, double end) =>
         new ClipService(_downloader, _converter).CreateClipAsync(
             new ClipRequest("https://youtu.be/x", TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end),
@@ -153,11 +190,13 @@ public sealed class ClipServiceTests : IDisposable
         public int DownloadCalls { get; private set; }
         public int UpdateCalls { get; private set; }
         public string? LastTempDir { get; private set; }
+        public Action? OnDownload { get; set; }
 
         public Task<DownloadedAudio> DownloadAudioAsync(string url, string tempDir, IProgress<double>? progress, CancellationToken cancellationToken)
         {
             DownloadCalls++;
             LastTempDir = tempDir;
+            OnDownload?.Invoke();
             return Task.FromResult(Results.Dequeue()(tempDir));
         }
 

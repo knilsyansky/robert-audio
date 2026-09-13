@@ -23,7 +23,7 @@ internal static class YtDlpCommand
     {
         var args = new List<string>
         {
-            "--ignore-config", "--no-update", "--no-playlist", "--no-part", "--no-mtime",
+            "--ignore-config", "--encoding", "utf-8", "--no-update", "--no-playlist", "--no-part", "--no-mtime",
             "-f", "bestaudio[ext=m4a]/bestaudio",
         };
         if (denoPath != null)

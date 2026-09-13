@@ -19,6 +19,7 @@ internal sealed class ClipService(IAudioDownloader downloader, IAudioConverter c
         string? outputPath = null;
         try
         {
+            Directory.CreateDirectory(request.OutputFolder);
             DownloadedAudio audio = await DownloadWithRetryAsync(request.Url, tempDir, progress, cancellationToken).ConfigureAwait(false);
 
             TimeSpan end = request.End;
@@ -31,7 +32,6 @@ internal sealed class ClipService(IAudioDownloader downloader, IAudioConverter c
             }
             TimeSpan clipLength = end - request.Start;
 
-            Directory.CreateDirectory(request.OutputFolder);
             outputPath = OutputNaming.GetAvailablePath(request.OutputFolder, OutputNaming.BuildFileName(audio.Title, request.Start, end));
             string? filter = FfmpegCommand.BuildFilter(clipLength, request.Fade, request.FadeSeconds, request.Normalize);
 

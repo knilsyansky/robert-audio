@@ -32,6 +32,16 @@ public class YtDlpCommandTests
     }
 
     [Fact]
+    public void BuildDownloadArguments_forces_utf8_output_so_cyrillic_is_readable()
+    {
+        List<string> args = YtDlpCommand.BuildDownloadArguments(Url, @"C:\tmp\job", null);
+
+        int index = args.IndexOf("--encoding");
+        Assert.True(index >= 0, "--encoding missing");
+        Assert.Equal("utf-8", args[index + 1]);
+    }
+
+    [Fact]
     public void BuildUpdateArguments_switches_to_nightly()
     {
         Assert.Equal(new[] { "--ignore-config", "--update-to", "nightly" }, YtDlpCommand.BuildUpdateArguments());

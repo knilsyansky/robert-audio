@@ -18,6 +18,7 @@ public partial class MainForm : Form
     private string? _lastOutputPath;
     private bool _endEditedByUser;
     private bool _settingEnd;
+    private bool _closeWhenIdle;
 
     public MainForm()
     {
@@ -36,7 +37,14 @@ public partial class MainForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        _cancellation?.Cancel();
+        if (_cancellation != null)
+        {
+            // Let the running clip delete its partial file and temp folder before the app exits.
+            e.Cancel = true;
+            _closeWhenIdle = true;
+            _cancellation.Cancel();
+            return;
+        }
         base.OnFormClosing(e);
     }
 
@@ -68,9 +76,10 @@ public partial class MainForm : Form
 
     private void urlTextBox_TextChanged(object? sender, EventArgs e)
     {
-        _endEditedByUser = false; // a new link starts a new clip
-        if (YouTubeUrl.TryGetStartTime(urlTextBox.Text) is TimeSpan start)
-            startTextBox.Text = TimeInput.FormatDisplay(start);
+        if (YouTubeUrl.TryGetStartTime(urlTextBox.Text) is not TimeSpan start)
+            return;
+        _endEditedByUser = false; // a link with a timestamp starts a new clip
+        startTextBox.Text = TimeInput.FormatDisplay(start);
         SetDefaultEndIfUntouched();
     }
 
@@ -141,6 +150,8 @@ public partial class MainForm : Form
             _cancellation = null;
             if (!IsDisposed)
                 SetRunning(false);
+            if (_closeWhenIdle)
+                BeginInvoke(Close);
         }
     }
 
@@ -149,6 +160,7 @@ public partial class MainForm : Form
         string url = urlTextBox.Text.Trim();
         TimeSpan start = TimeSpan.Zero;
         TimeSpan end = TimeSpan.Zero;
+        string folder = AppPaths.DefaultOutputDir;
         string? problem = null;
 
         if (url.Length == 0)
@@ -161,6 +173,18 @@ public partial class MainForm : Form
             problem = _ui.ErrorBadEnd;
         else if (end <= start)
             problem = _ui.ErrorEndBeforeStart;
+        else
+        {
+            string requestedFolder = outputFolderTextBox.Text.Trim();
+            try
+            {
+                folder = requestedFolder.Length > 0 ? Path.GetFullPath(requestedFolder) : AppPaths.DefaultOutputDir;
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or System.Security.SecurityException)
+            {
+                problem = _ui.ErrorBadFolder;
+            }
+        }
 
         if (problem != null)
         {
@@ -168,9 +192,7 @@ public partial class MainForm : Form
             return null;
         }
 
-        string folder = outputFolderTextBox.Text.Trim();
-        return new ClipRequest(url, start, end, fadeCheckBox.Checked, (double)fadeSecondsUpDown.Value, normalizeCheckBox.Checked,
-            folder.Length > 0 ? folder : AppPaths.DefaultOutputDir);
+        return new ClipRequest(url, start, end, fadeCheckBox.Checked, (double)fadeSecondsUpDown.Value, normalizeCheckBox.Checked, folder);
     }
 
     private void ShowProgress(ClipProgress progress)

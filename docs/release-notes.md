@@ -14,3 +14,8 @@ Windows может показать «Windows защитила ваш компь
 5. Any error: click "Copy details" and send the text. / Если ошибка — нажмите «Скопировать подробности» и отправьте текст.
 
 The app updates its download engine (yt-dlp) by itself on every start. / Программа сама обновляет yt-dlp при каждом запуске.
+
+If Windows blocks the app and there's no "Run anyway" button, or your antivirus deletes a file from the tools folder, don't change
+any security settings yourself — send a screenshot to whoever gave you the app. / Если Windows блокирует программу и нет кнопки
+«Выполнить в любом случае», либо антивирус удалил файл из папки tools, не меняйте настройки безопасности сами — отправьте
+скриншот тому, кто дал вам эту программу.
