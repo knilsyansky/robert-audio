@@ -5,7 +5,7 @@ namespace YtAudioDownloader;
 public enum YtDlpFailure { Blocked, Unavailable, InvalidUrl, Network, Unknown }
 
 // What yt-dlp reported about a download, collected line by line.
-public sealed class YtDlpDownloadInfo
+internal sealed class YtDlpDownloadInfo
 {
     public string? Title { get; set; }
     public TimeSpan? Duration { get; set; }
