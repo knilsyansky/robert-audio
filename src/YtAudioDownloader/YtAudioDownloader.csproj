@@ -13,4 +13,12 @@
   <ItemGroup>
     <InternalsVisibleTo Include="YtAudioDownloader.Tests" />
   </ItemGroup>
+
+  <!-- For running from the IDE: scripts\fetch-tools.ps1 -Destination .tools-cache\dev-tools -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\.tools-cache\dev-tools')">
+    <None Include="$(MSBuildThisFileDirectory)..\..\.tools-cache\dev-tools\**\*"
+          Link="tools\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
+  </ItemGroup>
 </Project>
