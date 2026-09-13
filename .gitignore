@@ -7,3 +7,6 @@ publish/
 *.log
 *.tmp
 *.cache
+.tools-cache/
+.superpowers/
+TestResults/
