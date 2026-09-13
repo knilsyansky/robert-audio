@@ -8,6 +8,7 @@
     <Product>YouTube Audio Downloader</Product>
     <Version>0.0.0-dev</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="YtAudioDownloader.Tests" />

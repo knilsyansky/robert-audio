@@ -1,205 +1,274 @@
-using System;
 using System.Diagnostics;
-using System.IO;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+using System.Globalization;
+using System.Runtime.InteropServices;
 
-namespace YtAudioDownloader
+namespace YtAudioDownloader;
+
+public partial class MainForm : Form
 {
-    public partial class MainForm : Form
+    private static readonly TimeSpan DefaultClipLength = TimeSpan.FromSeconds(30);
+
+    private readonly UiText _ui = Strings.Current;
+    private readonly Settings _settings = Settings.Load(Settings.DefaultPath);
+    private readonly YtDlpClient _ytDlp = YtDlpClient.CreateDefault();
+    private readonly ClipService _clips;
+    private Task _ytDlpReady = Task.CompletedTask;
+    private string _ytDlpVersion = "?";
+    private CancellationTokenSource? _cancellation;
+    private string? _lastOutputPath;
+    private bool _endEditedByUser;
+    private bool _settingEnd;
+
+    public MainForm()
     {
-        public MainForm()
+        InitializeLayout();
+        _clips = new ClipService(_ytDlp, FfmpegClient.CreateDefault());
+        Text = $"{_ui.WindowTitle} {Application.ProductVersion}";
+        outputFolderTextBox.Text = string.IsNullOrWhiteSpace(_settings.OutputFolder) ? AppPaths.DefaultOutputDir : _settings.OutputFolder;
+        Log.DeleteOldFiles();
+    }
+
+    protected override void OnShown(EventArgs e)
+    {
+        base.OnShown(e);
+        _ytDlpReady = PrepareYtDlpAsync();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        _cancellation?.Cancel();
+        base.OnFormClosing(e);
+    }
+
+    // Startup: make sure yt-dlp works, then update it in the background. Never throws.
+    private async Task PrepareYtDlpAsync()
+    {
+        toolStatusLabel.Text = _ui.ToolChecking;
+        try
         {
-            InitializeComponent();
-            outputTextBox.Text = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "output.mp3");
+            _ytDlpVersion = await _ytDlp.EnsureReadyAsync(CancellationToken.None);
+            UpdateOutcome update = await _ytDlp.UpdateAsync(CancellationToken.None);
+            _ytDlpVersion = update.Version ?? _ytDlpVersion;
+            if (!IsDisposed)
+                toolStatusLabel.Text = string.Format(update.Succeeded ? _ui.ToolOk : _ui.ToolUpdateFailed, _ytDlpVersion);
+        }
+        catch (ToolMissingException ex)
+        {
+            Log.Write(ex.Message);
+            if (!IsDisposed)
+                toolStatusLabel.Text = _ui.ToolMissing;
+        }
+        catch (Exception ex)
+        {
+            Log.Write("yt-dlp preparation failed: " + ex);
+            if (!IsDisposed)
+                toolStatusLabel.Text = string.Format(_ui.ToolUpdateFailed, _ytDlpVersion);
+        }
+    }
+
+    private void urlTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        _endEditedByUser = false; // a new link starts a new clip
+        if (YouTubeUrl.TryGetStartTime(urlTextBox.Text) is TimeSpan start)
+            startTextBox.Text = TimeInput.FormatDisplay(start);
+        SetDefaultEndIfUntouched();
+    }
+
+    private void startTextBox_TextChanged(object? sender, EventArgs e) => SetDefaultEndIfUntouched();
+
+    private void endTextBox_TextChanged(object? sender, EventArgs e)
+    {
+        if (!_settingEnd)
+            _endEditedByUser = true;
+    }
+
+    // End follows Start + 30 s until the user types an end of their own.
+    private void SetDefaultEndIfUntouched()
+    {
+        if (_endEditedByUser || !TimeInput.TryParse(startTextBox.Text, out TimeSpan start))
+            return;
+        _settingEnd = true;
+        endTextBox.Text = TimeInput.FormatDisplay(start + DefaultClipLength);
+        _settingEnd = false;
+    }
+
+    private async void downloadButton_Click(object? sender, EventArgs e)
+    {
+        if (_cancellation != null || ReadRequest() is not ClipRequest request)
+            return;
+
+        _settings.OutputFolder = request.OutputFolder;
+        _settings.Save(Settings.DefaultPath);
+
+        _cancellation = new CancellationTokenSource();
+        SetRunning(true);
+        try
+        {
+            if (!_ytDlpReady.IsCompleted)
+            {
+                ShowProgress(new ClipProgress(ClipStage.Updating, null));
+                await _ytDlpReady.WaitAsync(_cancellation.Token);
+            }
+
+            ClipResult result = await _clips.CreateClipAsync(request, new Progress<ClipProgress>(ShowProgress), _cancellation.Token);
+            _lastOutputPath = result.OutputPath;
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Value = progressBar.Maximum;
+            statusLabel.Text = string.Format(_ui.StatusDone, Path.GetFileName(result.OutputPath));
+            openFolderButton.Visible = true;
+        }
+        catch (OperationCanceledException)
+        {
+            if (!IsDisposed)
+            {
+                ResetProgress();
+                statusLabel.Text = _ui.StatusCancelled;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Write("Clip failed: " + ex);
+            if (!IsDisposed)
+            {
+                ResetProgress();
+                statusLabel.Text = _ui.StatusError;
+                ShowError(ex, request);
+            }
+        }
+        finally
+        {
+            _cancellation.Dispose();
+            _cancellation = null;
+            if (!IsDisposed)
+                SetRunning(false);
+        }
+    }
+
+    private ClipRequest? ReadRequest()
+    {
+        string url = urlTextBox.Text.Trim();
+        TimeSpan start = TimeSpan.Zero;
+        TimeSpan end = TimeSpan.Zero;
+        string? problem = null;
+
+        if (url.Length == 0)
+            problem = _ui.ErrorNoUrl;
+        else if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            problem = _ui.ErrorInvalidUrl;
+        else if (!TimeInput.TryParse(startTextBox.Text, out start))
+            problem = _ui.ErrorBadStart;
+        else if (!TimeInput.TryParse(endTextBox.Text, out end))
+            problem = _ui.ErrorBadEnd;
+        else if (end <= start)
+            problem = _ui.ErrorEndBeforeStart;
+
+        if (problem != null)
+        {
+            MessageBox.Show(this, problem, _ui.ErrorDialogTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return null;
         }
 
-        private async void downloadButton_Click(object sender, EventArgs e)
-        {
-            SetUiEnabled(false);
-            statusLabel.Text = "Processing...";
-            string tempDir = string.Empty;
+        string folder = outputFolderTextBox.Text.Trim();
+        return new ClipRequest(url, start, end, fadeCheckBox.Checked, (double)fadeSecondsUpDown.Value, normalizeCheckBox.Checked,
+            folder.Length > 0 ? folder : AppPaths.DefaultOutputDir);
+    }
 
+    private void ShowProgress(ClipProgress progress)
+    {
+        if (IsDisposed)
+            return;
+
+        string stage = progress.Stage switch
+        {
+            ClipStage.Updating => _ui.StatusUpdating,
+            ClipStage.Downloading => _ui.StatusDownloading,
+            _ => _ui.StatusConverting,
+        };
+        if (progress.Fraction is double fraction)
+        {
+            progressBar.Style = ProgressBarStyle.Continuous;
+            progressBar.Value = (int)Math.Round(fraction * progressBar.Maximum);
+            statusLabel.Text = stage + " " + fraction.ToString("P0", CultureInfo.CurrentCulture);
+        }
+        else
+        {
+            progressBar.Style = ProgressBarStyle.Marquee;
+            statusLabel.Text = stage;
+        }
+    }
+
+    private void ResetProgress()
+    {
+        progressBar.Style = ProgressBarStyle.Continuous;
+        progressBar.Value = 0;
+    }
+
+    private void SetRunning(bool running)
+    {
+        foreach (Control control in new Control[] { urlTextBox, startTextBox, endTextBox, fadeCheckBox, normalizeCheckBox, outputFolderTextBox, browseButton, downloadButton })
+            control.Enabled = !running;
+        fadeSecondsUpDown.Enabled = !running && fadeCheckBox.Checked;
+        cancelButton.Enabled = running;
+        if (running)
+            openFolderButton.Visible = false;
+    }
+
+    private void ShowError(Exception error, ClipRequest request)
+    {
+        (string message, string details) = ErrorText.Describe(error, _ui);
+        string report = string.Join(Environment.NewLine,
+            $"App: {Application.ProductVersion}",
+            $"yt-dlp: {_ytDlpVersion}",
+            $"URL: {request.Url}",
+            $"Clip: {TimeInput.FormatDisplay(request.Start)} - {TimeInput.FormatDisplay(request.End)}",
+            $"Log: {Log.CurrentFile}",
+            "",
+            details.Trim());
+
+        var copyButton = new TaskDialogButton(_ui.CopyDetailsButton) { AllowCloseDialog = false };
+        copyButton.Click += (_, _) =>
+        {
             try
             {
-                string url = urlTextBox.Text.Trim();
-                if (string.IsNullOrEmpty(url))
-                    throw new InvalidOperationException("Please enter a YouTube URL.");
-
-                if (!TimeSpan.TryParse(startTextBox.Text.Trim(), out TimeSpan startTime))
-                    throw new InvalidOperationException("Start time must be a valid time span (e.g. 00:01:30).");
-
-                if (!TimeSpan.TryParse(endTextBox.Text.Trim(), out TimeSpan endTime))
-                    throw new InvalidOperationException("End time must be a valid time span (e.g. 00:02:30).");
-
-                if (endTime <= startTime)
-                    throw new InvalidOperationException("End time must be greater than start time.");
-
-                string outputPath = outputTextBox.Text.Trim();
-                if (string.IsNullOrEmpty(outputPath))
-                    throw new InvalidOperationException("Please select an output file.");
-
-                string ytDlpPath = ResolveToolPath("yt-dlp.exe");
-                string ffmpegPath = ResolveToolPath("ffmpeg.exe");
-
-                string tempRoot = Path.Combine(Path.GetTempPath(), "YtAudioDownloader");
-                Directory.CreateDirectory(tempRoot);
-                tempDir = Path.Combine(tempRoot, Guid.NewGuid().ToString("N"));
-                Directory.CreateDirectory(tempDir);
-
-                string downloadedFile = await DownloadAudioAsync(ytDlpPath, url, tempDir);
-                string filter = BuildAudioFilter(endTime - startTime);
-                await ConvertAudioAsync(ffmpegPath, downloadedFile, outputPath, startTime, endTime, filter);
-
-                statusLabel.Text = "Finished successfully.";
-                MessageBox.Show("Audio saved to: " + outputPath, "Done", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                Clipboard.SetText(report);
+                copyButton.Text = _ui.Copied;
             }
-            catch (Exception ex)
+            catch (ExternalException ex)
             {
-                statusLabel.Text = "Error.";
-                MessageBox.Show(ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Log.Write("Clipboard is busy: " + ex.Message);
             }
-            finally
+        };
+
+        TaskDialog.ShowDialog(this, new TaskDialogPage
+        {
+            Caption = _ui.WindowTitle,
+            Heading = _ui.ErrorDialogTitle,
+            Text = message,
+            Icon = TaskDialogIcon.Error,
+            Buttons = { copyButton, TaskDialogButton.OK },
+            Expander = new TaskDialogExpander(report)
             {
-                SetUiEnabled(true);
-                if (!string.IsNullOrEmpty(tempDir) && Directory.Exists(tempDir))
-                {
-                    try
-                    {
-                        Directory.Delete(tempDir, true);
-                    }
-                    catch
-                    {
-                        // Ignore cleanup failures.
-                    }
-                }
-            }
-        }
+                CollapsedButtonText = _ui.DetailsExpander,
+                ExpandedButtonText = _ui.DetailsExpander,
+            },
+        });
+    }
 
-        private static string ResolveToolPath(string toolName)
+    private void browseButton_Click(object? sender, EventArgs e)
+    {
+        using var dialog = new FolderBrowserDialog
         {
-            string localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, toolName);
-            if (File.Exists(localPath))
-                return localPath;
+            Description = _ui.FolderDialogDescription,
+            UseDescriptionForTitle = true,
+            SelectedPath = Directory.Exists(outputFolderTextBox.Text) ? outputFolderTextBox.Text : AppPaths.DefaultOutputDir,
+        };
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+            outputFolderTextBox.Text = dialog.SelectedPath;
+    }
 
-            string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-            foreach (string path in pathEnv.Split(Path.PathSeparator))
-            {
-                string candidate = Path.Combine(path.Trim(), toolName);
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-
-            throw new FileNotFoundException($"Could not find {toolName}. Place it in the application folder or add it to PATH.");
-        }
-
-        private async Task<string> DownloadAudioAsync(string ytDlpPath, string url, string tempDir)
-        {
-            string outputPattern = Path.Combine(tempDir, "download.%(ext)s");
-            string arguments = $"--no-playlist --no-part -f bestaudio[ext=m4a]/bestaudio -o \"{outputPattern}\" \"{url}\"";
-            await RunProcessAsync(ytDlpPath, arguments, "Downloading audio...");
-
-            string? downloadedFile = FindDownloadedFile(tempDir);
-            if (downloadedFile == null)
-                throw new FileNotFoundException("Downloaded audio file not found.");
-
-            FileInfo fileInfo = new FileInfo(downloadedFile);
-            if (fileInfo.Length < 1024)
-                throw new InvalidOperationException($"Downloaded audio file is too small ({fileInfo.Length} bytes). The download may have failed.");
-
-            return downloadedFile;
-        }
-
-        private static string? FindDownloadedFile(string tempDir)
-        {
-            string? bestFile = null;
-            long bestSize = 0;
-
-            foreach (string file in Directory.GetFiles(tempDir, "download.*"))
-            {
-                string extension = Path.GetExtension(file);
-                if (string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(extension, ".txt", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(extension, ".part", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(extension, ".tmp", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                FileInfo info = new FileInfo(file);
-                if (info.Length > bestSize)
-                {
-                    bestSize = info.Length;
-                    bestFile = file;
-                }
-            }
-
-            return bestFile;
-        }
-
-        private static string BuildAudioFilter(TimeSpan duration)
-        {
-            double fadeSeconds = 3.0;
-            double fadeOutStart = Math.Max(0, duration.TotalSeconds - fadeSeconds);
-            return $"afade=t=in:st=0:d={fadeSeconds},afade=t=out:st={fadeOutStart}:d={fadeSeconds}";
-        }
-
-        private async Task ConvertAudioAsync(string ffmpegPath, string inputFile, string outputPath, TimeSpan startTime, TimeSpan endTime, string filter)
-        {
-            string startArg = FormatTimeSpan(startTime);
-            string durationArg = FormatTimeSpan(endTime - startTime);
-            string? outputDir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrEmpty(outputDir))
-                Directory.CreateDirectory(outputDir);
-
-            string arguments = $"-y -ss {startArg} -i \"{inputFile}\" -t {durationArg} -af \"{filter}\" -vn -c:a libmp3lame -q:a 2 \"{outputPath}\"";
-            await RunProcessAsync(ffmpegPath, arguments, "Converting audio...");
-        }
-
-        private static string FormatTimeSpan(TimeSpan time)
-        {
-            return time.ToString(@"hh\:mm\:ss");
-        }
-
-        private async Task RunProcessAsync(string fileName, string arguments, string statusMessage)
-        {
-            statusLabel.Text = statusMessage;
-            using Process process = new Process();
-            process.StartInfo.FileName = fileName;
-            process.StartInfo.Arguments = arguments;
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.RedirectStandardError = true;
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.CreateNoWindow = true;
-
-            process.Start();
-            string output = await process.StandardOutput.ReadToEndAsync();
-            string error = await process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException($"Command failed: {fileName} {arguments}\n{error}");
-        }
-
-        private void SetUiEnabled(bool enabled)
-        {
-            urlTextBox.Enabled = enabled;
-            startTextBox.Enabled = enabled;
-            endTextBox.Enabled = enabled;
-            outputTextBox.Enabled = enabled;
-            browseButton.Enabled = enabled;
-            downloadButton.Enabled = enabled;
-        }
-
-        private void browseButton_Click(object sender, EventArgs e)
-        {
-            using SaveFileDialog dialog = new SaveFileDialog();
-            dialog.Filter = "MP3 files (*.mp3)|*.mp3";
-            dialog.FileName = "output.mp3";
-            if (dialog.ShowDialog() == DialogResult.OK)
-            {
-                outputTextBox.Text = dialog.FileName;
-            }
-        }
+    private void openFolderButton_Click(object? sender, EventArgs e)
+    {
+        if (_lastOutputPath != null && File.Exists(_lastOutputPath))
+            Process.Start("explorer.exe", $"/select,\"{_lastOutputPath}\"")?.Dispose();
     }
 }
