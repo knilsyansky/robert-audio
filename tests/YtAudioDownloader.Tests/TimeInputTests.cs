@@ -40,6 +40,10 @@ public class TimeInputTests
     [InlineData("1.5:30")]
     [InlineData("1:2:3:4")]
     [InlineData("100:00:00")]
+    [InlineData("NaN")]
+    [InlineData("1:NaN")]
+    [InlineData("1:02:NaN")]
+    [InlineData("Infinity")]
     public void TryParse_rejects_invalid_input(string? text)
     {
         Assert.False(TimeInput.TryParse(text, out _));

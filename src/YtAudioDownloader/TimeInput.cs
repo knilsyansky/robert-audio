@@ -19,6 +19,8 @@ internal static class TimeInput
 
         if (!double.TryParse(parts[^1], NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double seconds))
             return false;
+        if (!double.IsFinite(seconds))
+            return false;
         if (parts.Length > 1 && seconds >= 60)
             return false;
 
