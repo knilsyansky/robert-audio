@@ -1,15 +1,15 @@
-using System;
-using System.Windows.Forms;
+namespace YtAudioDownloader;
 
-namespace YtAudioDownloader
+internal static class Program
 {
-    internal static class Program
+    [STAThread]
+    private static int Main(string[] args)
     {
-        [STAThread]
-        static void Main()
-        {
-            ApplicationConfiguration.Initialize();
-            Application.Run(new MainForm());
-        }
+        if (args.Length > 0 && args[0] == "--clip")
+            return HeadlessClip.Run(args[1..]);
+
+        ApplicationConfiguration.Initialize();
+        Application.Run(new MainForm());
+        return 0;
     }
 }
