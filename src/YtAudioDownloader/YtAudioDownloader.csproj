@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Product>YouTube Audio Downloader</Product>
+    <Version>0.0.0-dev</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="YtAudioDownloader.Tests" />
+  </ItemGroup>
+
+  <!-- For running from the IDE: scripts\fetch-tools.ps1 -Destination .tools-cache\dev-tools -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)..\..\.tools-cache\dev-tools')">
+    <None Include="$(MSBuildThisFileDirectory)..\..\.tools-cache\dev-tools\**\*"
+          Link="tools\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="Never" />
+  </ItemGroup>
+</Project>
