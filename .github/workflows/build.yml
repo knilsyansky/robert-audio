@@ -8,7 +8,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  build:
     if: github.ref_type != 'tag'
     runs-on: windows-latest
     steps:
@@ -16,8 +16,8 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
-      - name: Test
-        run: dotnet test YtAudioDownloader.sln -c Release
+      - name: Build
+        run: dotnet build YtAudioDownloader.sln -c Release
 
   release:
     if: github.ref_type == 'tag'

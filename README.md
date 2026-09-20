@@ -27,7 +27,7 @@ quarantined file and add the app's folder to the antivirus exclusions.
 Needs the .NET 10 SDK.
 
 ```powershell
-dotnet test YtAudioDownloader.sln                                   # unit tests
+dotnet build YtAudioDownloader.sln                                  # build
 .\scripts\fetch-tools.ps1 -Destination .tools-cache\dev-tools       # once, so F5/dotnet run finds yt-dlp, deno, ffmpeg
 dotnet run --project src\YtAudioDownloader                          # run the app
 .\build.ps1 -Version 1.2.3                                          # publish\YtAudioDownloader.zip (or build.bat)
@@ -42,7 +42,10 @@ Get-Content out.txt -Encoding UTF8    # "OK <file>" or "ERROR ..."
 
 Environment overrides: `YTAUDIO_DATA_DIR` (data folder), `YTAUDIO_LANG=ru|en` (UI language).
 
-Layout: `src/YtAudioDownloader` (app), `tests/YtAudioDownloader.Tests` (xUnit), `scripts/` (tool download, screenshots).
+Layout: `src/YtAudioDownloader` (app), `scripts/` (tool download, screenshots). The xUnit tests in
+`tests/YtAudioDownloader.Tests` are kept out of the repository (see `.gitignore`); where they exist locally,
+`dotnet test tests\YtAudioDownloader.Tests\YtAudioDownloader.Tests.csproj` runs them and `build.ps1` picks them up
+automatically.
 
 ## Releasing
 
